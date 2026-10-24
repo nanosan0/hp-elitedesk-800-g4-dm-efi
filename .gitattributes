@@ -1,0 +1,2 @@
+# 所有文件按二进制处理，禁止 Git 改写换行符（kext 的 Info.plist / CodeResources 必须保持字节一致）
+* -text

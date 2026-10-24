@@ -1,0 +1,8 @@
+# macOS / Windows junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# logs & dumps produced by OpenCore debug builds
+opencore-*.txt
+SysReport/
