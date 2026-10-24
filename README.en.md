@@ -1,29 +1,44 @@
-# HP 400 G Series · Hackintosh OpenCore EFI
+# HP EliteDesk 800 G4 DM · Hackintosh OpenCore EFI
 
 [简体中文](README.md) | **English**
 
-OpenCore boot configuration for HP 400 G series desktops (Coffee Lake / 300-series platform), SMBIOS `iMac20,1`, Intel UHD 630 iGPU.
+OpenCore boot configuration for the **HP EliteDesk 800 G4 DM 35W** (Q370 chipset / i3-8100 / UHD 630), SMBIOS `iMac20,1`. This EFI was exported from the machine's actual working setup.
 
-> ### ⚠️ Read this first
-> **All SMBIOS identifiers (Serial, MLB, SystemUUID, ROM) have been wiped from this repo.**
-> The EFI will still boot, but **iCloud, iMessage, FaceTime and the App Store will not work**
-> until you generate your own set and put it into `config.plist` — see [Serial & MLB](#serial--mlb-must-be-regenerated).
+> ### ⚠️ Read before use
+> 1. **All SMBIOS identifiers (Serial / MLB / SystemUUID / ROM) have been wiped.** It boots, but iCloud / iMessage / App Store won't work until you generate your own — see [Serial & MLB](#serial--mlb-must-be-regenerated).
+> 2. **The iGPU EDID is hard-coded** for the monitor listed below. **Delete that entry if you use a different display**, otherwise you may get a black screen or wrong resolution — see [Three things you must know](#three-things-you-must-know).
 
 ---
 
-## Overview
+## Hardware (what this EFI is tuned for)
+
+| Part | Actual model / spec | Config involved |
+|---|---|---|
+| System | **HP EliteDesk 800 G4 DM 35W** (Desktop Mini, product `83E2`, Q370) | SMBIOS spoofed as `iMac20,1` |
+| BIOS | Q21 Ver. `02.33.00` (2026-02-03), UEFI — **CSM off / Secure Boot off / Above 4G on / ReBAR off** | — |
+| CPU | **Intel Core i3-8100** (Coffee Lake-S, 4C/4T, 3.6 GHz, **no Turbo**) | `SSDT-PLUG`; `CPUFriend` pair disabled by default (nothing to rebuild without Turbo) |
+| iGPU | **Intel UHD Graphics 630** (`8086:3E91`, 1 GB shared) | `WhateverGreen`; `AAPL,ig-platform-id = 0x3E9B0007`, `device-id` spoofed to `0x3E9B` |
+| RAM | **16 GB = 8 GB × 2** DDR4-2667 (Crucial `CT8G4SFS8266.M8FD` + `WAR4S2666D19081C`), DIMM1 / DIMM3 dual channel, running at 2400 | Native, no `PlatformInfo > Memory` injection |
+| Storage | **ADATA SX6000LNP 256 GB NVMe** (SM2263 controller, `126F:2263`, behind `RP21`) | Native NVMe |
+| Ethernet | **Intel I219-LM** (`8086:15BB`, `_SB.PCI0.GLAN`) | `IntelMausi.kext` |
+| Wi-Fi | **Dell Wireless 1820A 802.11ac = Broadcom BCM4350** (`14E4:43A3`, `RP08`) | `AirportBrcmFixup` + `IOSkywalkFamily` + `IO80211FamilyLegacy` (with `AirPortBrcmNIC`) |
+| Bluetooth | DW1820A BT 4.1 LE (`0A5C:6412`, USB at `XHC_.RHUB.HS14`) | `BrcmPatchRAM3` + `BrcmFirmwareData` + `BlueToolFixup` |
+| Audio | **Synaptics / Conexant HD Audio** (`14F1:5098`), controller `8086:A348` (`HDAS`) | `AppleALC.kext`, boot-arg `alcid=20` |
+| Display | **HKC IG27**, 27" 1920×1080 **@120 Hz**, DisplayPort, EDID injected | See custom point #1 |
+| USB | 300-series XHCI (`8086:A36D`), keyboard/mouse behind a hub on HS12 | `USBInjectAll` + `XHCI-unsupported` |
+| Misc | Embedded controller `LPCB.EC0`, HPET / RTC / SLPB / PWRB present, AWAC present | `SSDT-AWAC*` + `SSDT-EC-USBX-DESKTOP` + `SSDT-PMC` |
+
+## Key settings
 
 | Item | Value |
 |---|---|
-| SMBIOS | `iMac20,1` |
-| iGPU | Intel UHD 630 (`AAPL,ig-platform-id = 0x3E9B0007`, `device-id = 0x3E9B`, `framebuffer-stolenmem = 0x01300000`, custom EDID) |
-| Ethernet | Intel I219-LM → `IntelMausi.kext` |
-| Wi-Fi / Bluetooth | Broadcom BCM94360 family → `AirportBrcmFixup` + `BrcmPatchRAM3` + `BrcmFirmwareData` + (`IOSkywalkFamily` / `IO80211FamilyLegacy` / `AirPortBrcmNIC`) |
-| Audio | `AppleALC.kext`, boot-arg `alcid=20` |
-| Bootloader | OpenCore 1.0.x (original `OpenCore.efi` shipped; `config.plist` differs from 1.0.8 by 4 `HideVerbose` keys only — see [FAQ](#faq)) |
+| boot-args | `keepsyms=1 debug=0x100 igfxonln=1 amfi=0x80 ipc_control_port_options=0 alcid=20` |
 | SIP | `csr-active-config = 0x803` |
 | SecureBootModel | `Disabled` |
-| boot-args | `keepsyms=1 debug=0x100 igfxonln=1 amfi=0x80 ipc_control_port_options=0 alcid=20` |
+| SMBIOS | `iMac20,1`, `UpdateSMBIOSMode = Custom` |
+| Kernel quirks enabled | `AppleXcpmCfgLock` (CFG Lock not unlocked), `CustomSMBIOSGuid`, `DisableIoMapper` (VT-d stays on), `DisableLinkeditJettison`, `XhciPortLimit`, `PanicNoKextDump`, `PowerTimeoutKernelPanic` |
+| ACPI patch | `HPET _CRS to XCRS` (renamed, paired with `SSDT-AWAC-HPET-RTC`) |
+| Picker | OpenCanopy, theme `Acidanthera\GoldenGate`, 5 s timeout, auxiliary entries visible |
 
 ## Layout
 
@@ -32,72 +47,86 @@ EFI/
 ├── BOOT/
 │   └── BOOTx64.efi
 └── OC/
-    ├── OpenCore.efi
+    ├── OpenCore.efi                   # OpenCore 1.0.x
     ├── config.plist
     ├── ACPI/       # SSDT-AWAC, SSDT-AWAC-HPET-RTC, SSDT-EC-USBX-DESKTOP, SSDT-PLUG, SSDT-PMC
     ├── Drivers/    # HfsPlus, OpenCanopy, OpenRuntime, ResetNvramEntry
-    ├── Kexts/      # 18 kexts (CPUFriend pair disabled by default)
-    ├── Resources/  # OpenCanopy theme (Acidanthera GoldenGate)
+    ├── Kexts/      # 18 kexts (CPUFriend pair disabled)
+    ├── Resources/  # OpenCanopy theme (GoldenGate)
     └── Tools/      # OpenShell.efi
 ```
 
 ## Quick start
 
-1. Prepare a **FAT32** USB stick and copy the whole `EFI` folder to the root of its EFI partition (keep the `EFI/BOOT` + `EFI/OC` structure).
-2. In BIOS: **disable Secure Boot / Fast Boot**, enable **Above 4G Decoding**, set DVMT / VGA Share Memory to **64 MB or more**, boot mode **UEFI only (no CSM)**.
-3. Boot from the stick, open the OpenCore picker, start the macOS installer, format the target disk as **APFS / GUID** in Disk Utility, then install.
-4. Copy `EFI` to the **internal disk's EFI partition** and put OpenCore first in the boot order (or run `bcfg boot add 0 FS0:\EFI\OC\OpenCore.efi "OpenCore"` from `UEFI Shell` in the picker).
+1. Format a USB stick as **FAT32**, copy the whole `EFI` folder to the root of its EFI partition (keep the `EFI/BOOT` + `EFI/OC` structure).
+2. Enter BIOS (`F10` at boot) and confirm: **Secure Boot off, CSM off, Above 4G Decoding on, Resizable BAR off** (already the case on this machine).
+3. Boot the stick → OpenCore picker → macOS installer → format the target disk as **APFS / GUID** → install.
+4. Copy `EFI` to the **internal disk's EFI partition** (for dual boot keep the existing `EFI/Microsoft`, only replace `BOOT` and `OC`) and put OpenCore first; or from `UEFI Shell` in the picker:
+   ```
+   bcfg boot add 0 FS0:\EFI\OC\OpenCore.efi "OpenCore"
+   ```
 
 ## Serial & MLB (must be regenerated)
 
-In `config.plist` → `PlatformInfo` → `Generic` these four keys are placeholders:
+`config.plist` → `PlatformInfo` → `Generic`:
 
-| Key | Current | What to use |
+| Key | Placeholder | What to use |
 |---|---|---|
-| `SystemSerialNumber` | `XXXXXXXXXXXX` | Generate for `iMac20,1` with GenSMBIOS / macserial |
-| `MLB` | `XXXXXXXXXXXXXXXXX` | Same tool, generated together with the serial |
-| `SystemUUID` | `00000000-0000-0000-0000-000000000000` | Any random UUID — or keep all zeros and let OpenCore derive it from hardware |
-| `ROM` | `00 00 00 00 00 00` | **Your real `en0` (Ethernet) MAC address**, 6 bytes, no separators |
+| `SystemSerialNumber` | `XXXXXXXXXXXX` | Generate for **`iMac20,1`** with GenSMBIOS / macserial |
+| `MLB` | `XXXXXXXXXXXXXXXXX` | Generated by the same tool |
+| `SystemUUID` | `00000000-0000-0000-0000-000000000000` | Random UUID, or keep zeros and let OpenCore derive it |
+| `ROM` | `00 00 00 00 00 00` | **Real MAC of your `en0` (I219-LM)**, 6 bytes |
 
-Edit with ProperTree / OCC, reboot once, then sign in — if iMessage fails, try FaceTime first.
+Reboot once, then sign in — if iMessage fails, try FaceTime first. **Never publish a config containing your own identifiers.**
 
-> Never publish a `config.plist` that contains your own identifiers: one machine, one set. Duplicate or rapidly changing serials trigger Apple's risk control.
+## Three things you must know
+
+1. **The display EDID is hard-coded** — `DeviceProperties > PciRoot(0x0)/Pci(0x2,0x0) > AAPL00,override-no-connect` holds the full 128-byte EDID of the HKC IG27 above.
+   - Different monitor: **delete that key** (keep `AAPL,ig-platform-id`, `device-id`, `framebuffer-*`), or you may get a black screen, artifacts or wrong resolution/refresh rate.
+   - Same monitor but a different port (DP ↔ HDMI): usually delete it too.
+2. **`alcid=20` was tuned for this machine's Synaptics codec (`14F1:5098`)**. AppleALC's coverage of Conexant/Synaptics is narrow; if you get silence or noise, try `11 → 13 → 1 → 3 → 99`, or just use a USB DAC.
+3. **SMBIOS is `iMac20,1` (10th-gen 6-core) while the real CPU is a 4-core i3-8100.** That's the usual trick to get `UHD 630 + Q370` past the model check; the price is a model name and CPU description that don't match reality. **Leave it alone** unless you're ready to redo all identifiers — changing the model also touches power management and wireless behaviour.
 
 ## Known limitations
 
-- **The Broadcom Wi-Fi stack targets macOS 15 Sequoia**: `IOSkywalkFamily` / `IO80211FamilyLegacy` / `AirPortBrcmNIC` are capped with `MaxKernel 25.99.99`, and `Kernel > Block` disables `com.apple.iokit.IOSkywalkFamily`.
-  Before upgrading to **macOS 26 Tahoe**, swap in `AirPortBrcmNIC-Tahoe.kext` (`MinKernel 25.0.0`) — otherwise Wi-Fi disappears after the upgrade.
-- `amfi=0x80` disables AMFI: **as a side effect, privacy prompts (mic / camera / screen recording) stop appearing** and apps never get a TCC entry. Remove it together with `AMFIPass.kext` if you don't need it.
-- Continuity / iPhone features depend on Wi-Fi being `en0`; re-check after swapping cards or applying root patches.
-- **Not included**: `EFI/HP` (HP BIOS + ME firmware) and `EFI/Microsoft` (Windows boot manager + BCD) from the original ESP — vendor firmware and machine-specific Windows boot data don't belong in a public repo. `oldConfig.plist` is excluded as well.
+- **DW1820A (BCM4350) is a notorious card** in the Hackintosh scene: it needs `AirportBrcmFixup` plus this legacy stack, and stability is mediocre (drops, low throughput, gone after sleep). A **BCM94360CS2 / BCM94360NG** would be a much easier swap.
+- **The Wi-Fi stack targets macOS 15 Sequoia**: `IOSkywalkFamily` / `IO80211FamilyLegacy` / `AirPortBrcmNIC` are capped at `MaxKernel 25.99.99`, and `Kernel > Block` disables `com.apple.iokit.IOSkywalkFamily`. Before upgrading to **macOS 26 Tahoe**, switch to `AirPortBrcmNIC-Tahoe.kext` (`MinKernel 25.0.0`) — otherwise Wi-Fi disappears.
+- **`SSDT-AWAC.aml` and `SSDT-AWAC-HPET-RTC.aml` overlap** (the latter already fixes AWAC). It works as is; if you ever see clock rollback / CMOS reset / odd wake behaviour, disable `SSDT-AWAC` and keep the combined one.
+- **`XhciPortLimit` is ineffective since macOS 11**, and `USBInjectAll` is the blunt old approach. For a proper fix, generate a real port map with USBToolBox and drop both.
+- **`amfi=0x80` disables AMFI**: privacy prompts (mic / camera / screen recording) stop appearing and apps never get a TCC entry. Remove it together with `AMFIPass.kext` if you don't need it.
+- The machine was a **dual-boot setup with Windows 11** on the same NVMe. This package excludes `EFI/Microsoft` and `EFI/HP` (HP BIOS / ME firmware); keep your own `EFI/Microsoft` and OpenCore will pick up the Windows entry.
 
 ## FAQ
 
-**`ocvalidate` says `Missing key HideVerbose` after upgrading OpenCore to 1.0.8+?**
-1.0.8 added `HideVerbose` to every `UEFI > Drivers` entry. Add `HideVerbose = false` to all four; older builds ignore the key, so it is safe either way.
+**`ocvalidate` reports `Missing key HideVerbose` after upgrading OpenCore to 1.0.8+**
+1.0.8 added `HideVerbose` to every `UEFI > Drivers` entry — add `false` to all four. Older builds ignore it, so it's safe either way.
 
-**Stuck at `[EB|#LOG:EXITBS:START]`?**
-Check `Booter > Quirks`: `EnableWriteUnprotector`, `SetupVirtualMap`, `ProvideCustomSlide` must stay `true` (already set here). These are the easiest ones to lose when swapping OpenCore versions.
+**Stuck at `[EB|#LOG:EXITBS:START]`**
+Check `Booter > Quirks`: `EnableWriteUnprotector`, `SetupVirtualMap` and `ProvideCustomSlide` must be `true` (already set here). These are the first to get lost when swapping OpenCore versions.
 
-**No audio?**
-Try other `alcid` values (`11 / 13 / 1 / 3`); HP board codecs differ, so the layout-id is not universal.
+**Black screen / Apple logo then nothing**
+Almost always the EDID injection not matching your display — delete `AAPL00,override-no-connect` first. Still failing? Also remove the `device-id` spoof (`9b3e0000`) so macOS sees the real `0x3E91`.
 
-**Can I install macOS 26 with this EFI?**
-It can boot, but fix the Wi-Fi entries first (see above). macOS 26 is stricter about SMBIOS and kext versions — install and validate on an older release first.
+**Is sleep/wake tuned?**
+Only the basic fixes are in place (`SSDT-PMC`, `SSDT-PLUG`, HPET/RTC). Long-run sleep/wake has not been deeply tuned — turn off "restart after power failure" and Power Nap, then inspect `pmset -g log`.
+
+**Can I install macOS 26?**
+It boots, but swap the Wi-Fi kexts as described above first; macOS 26 is stricter about SMBIOS and kext versions, so validate on 15 before upgrading.
 
 ## Changelog
 
 ### 1.0.0
 - First release: complete OpenCore EFI (5 ACPI tables, 18 kexts, 4 drivers, GoldenGate theme)
-- All SMBIOS identifiers and ROM wiped; `EFI/HP`, `EFI/Microsoft` and `oldConfig.plist` excluded
+- All SMBIOS identifiers and ROM wiped; `EFI/HP` (HP BIOS/ME firmware), `EFI/Microsoft` (Windows boot files + BCD) and `oldConfig.plist` excluded
 
 ## Credits & license
 
-- Bootloader and drivers by [Acidanthera](https://github.com/acidanthera) (OpenCorePkg, Lilu, VirtualSMC, WhateverGreen, AppleALC, AirportBrcmFixup, BrcmPatchRAM, IntelMausi, CPUFriend, AMFIPass)
+- Bootloader and drivers by [Acidanthera](https://github.com/acidanthera) — OpenCorePkg, Lilu, VirtualSMC, WhateverGreen, AppleALC, AirportBrcmFixup, BrcmPatchRAM, IntelMausi, CPUFriend, AMFIPass
 - ACPI patches generated with [CorpNewt SSDTTime](https://github.com/corpnewt/SSDTTime)
 - Theme icons from [OcBinaryData](https://github.com/acidanthera/OcBinaryData)
-- Configuration files and documentation in this repo are released under **MIT** (see [LICENSE](LICENSE)); bundled binaries such as `OpenCore.efi` and the kexts remain under their own authors' licenses.
+- Hardware report captured with `sysInfo` by JeoJay127
+- Configuration and docs in this repo: **MIT** (see [LICENSE](LICENSE)); bundled binaries (`OpenCore.efi`, kexts, theme assets) stay under their authors' licenses.
 
 ## Disclaimer
 
-Hackintosh is risky: you can lose data or brick firmware. Back up first and always keep a **known-good spare USB EFI**. Everything here is provided "as is", without warranty of any kind.
+Hackintosh is risky: data loss and bricked firmware are possible. Back up first and always keep a **known-good spare USB EFI**. Everything here is provided "as is", without warranty of any kind.
